@@ -46,8 +46,8 @@
         const { useState, useEffect, useMemo, useRef } = React;
         
         // --- 設定與資料 ---
-        const LIFF_ID = "2008400942-3JbRekRM"; // 正式 LIFF ID
-        const OFFICIAL_LINE_URL = "https://lin.ee/LTFdIJo"; // 官方 LINE 連結
+        const LIFF_ID = "2008400942-3JbRekRM"; 
+        const OFFICIAL_LINE_URL = "https://lin.ee/LTFdIJo"; 
         const N8N_WEBHOOK_URL = "https://ez2.zeabur.app/webhook/73304ca6-28ae-450a-829d-bd66c2a09919";
 
         // --- 內建圖示元件 ---
@@ -94,6 +94,8 @@
             Okinawa: { analysis: "AI 分析數據載入中...", articleUrl: "#", agodaUrl: "#" }
         };
 
+        // --- 模擬後端回傳的資料 (安全模式) ---
+        // 注意：第 31 天後的資料在後端就已經被清空 (模擬沒有付費的狀況)
         const generateFallbackData = () => {
             const fallbackData = [];
             const today = new Date();
@@ -104,16 +106,29 @@
                 d.setDate(start.getDate() + i);
                 const dateStr = d.toISOString().split('T')[0];
                 
-                fallbackData.push({
-                    check_in: dateStr,
-                    Tokyo_tag: i % 7 === 0 ? "🔴過熱" : (i % 3 === 0 ? "🟢便宜" : "🟡正常"),
-                    Tokyo_heat_index: 50 + (i % 20),
-                    Sapporo_tag: "🔵低點", Sapporo_heat_index: 20,
-                    Osaka_tag: "🟡正常", Osaka_heat_index: 45,
-                    Kyoto_tag: "🟠小貴", Kyoto_heat_index: 65,
-                    Fukuoka_tag: "🟢便宜", Fukuoka_heat_index: 30,
-                    Okinawa_tag: "⚠️ 無數據", Okinawa_heat_index: null,
-                });
+                // 判斷是否為鎖定日期
+                const diffTime = d - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const isFutureLocked = diffDays > 30;
+
+                if (isFutureLocked) {
+                    // 模擬後端：如果是未來鎖定日期，只回傳空資料
+                    fallbackData.push({
+                        check_in: dateStr,
+                        // 沒有真實數據，確保安全
+                        Tokyo_tag: null, 
+                        Tokyo_heat_index: null,
+                        // ... 其他城市省略
+                    });
+                } else {
+                    // 30天內回傳真實數據
+                    fallbackData.push({
+                        check_in: dateStr,
+                        Tokyo_tag: i % 7 === 0 ? "🔴過熱" : (i % 3 === 0 ? "🟢便宜" : "🟡正常"),
+                        Tokyo_heat_index: 50 + (i % 20),
+                        // ... 其他城市簡化
+                    });
+                }
             }
             return {
                 calendar: fallbackData,
@@ -122,6 +137,24 @@
                     Sapporo: { analysis: "（模擬數據）目前連線異常，顯示備用資料。", articleUrl: "#", agodaUrl: "#" },
                 }
             };
+        };
+
+        // 樣式庫：包含所有可能的顏色組合 (用於前端視覺詐欺)
+        const ALL_TAG_STYLES = [
+            "bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-100",   // 低點
+            "bg-green-50 text-green-700 border-green-200 ring-1 ring-green-100", // 便宜
+            "bg-yellow-50 text-yellow-700 border-yellow-200 ring-1 ring-yellow-100", // 正常
+            "bg-orange-50 text-orange-700 border-orange-200 ring-1 ring-orange-100", // 小貴
+            "bg-red-50 text-red-700 border-red-200 ring-1 ring-red-100"       // 過熱
+        ];
+        
+        // 假燈號文字
+        const FAKE_TAGS = ["🔵低點", "🟢便宜", "🟡正常", "🟠小貴", "🔴過熱"];
+
+        // 產生一個固定的假數據索引 (基於日期)
+        const getFakeDataIndex = (year, month, day) => {
+            const seed = year * 10000 + month * 100 + day;
+            return seed % ALL_TAG_STYLES.length;
         };
 
         const getTagStyle = (tag) => {
@@ -166,7 +199,7 @@
             const [selectedCity, setSelectedCity] = useState(CITIES[0]);
             const [currentDate, setCurrentDate] = useState(new Date());
             const [hasLockedDays, setHasLockedDays] = useState(false);
-            const [showGatekeeper, setShowGatekeeper] = useState(false); // 控制是否顯示阻擋視窗
+            const [showGatekeeper, setShowGatekeeper] = useState(false); 
 
             useEffect(() => {
                 const initializeApp = async () => {
@@ -177,12 +210,11 @@
                         if (window.liff) {
                             await liff.init({ liffId: LIFF_ID });
                             
-                            // --- 關鍵檢查：是否在 LINE App 內 ---
                             if (!liff.isInClient()) {
                                 console.warn("Not in LINE client. Showing gatekeeper.");
-                                setShowGatekeeper(true); // 顯示阻擋視窗
+                                setShowGatekeeper(true); 
                                 setLoading(false);
-                                return; // 中斷後續載入
+                                return; 
                             }
                             
                             if (!liff.isLoggedIn()) {
@@ -198,7 +230,6 @@
                         }
                     } catch (err) {
                         console.error("LIFF Init Error:", err);
-                        // 在非 localhost 環境下失敗，通常視為非 LINE 環境
                         if (window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')) {
                              setShowGatekeeper(true);
                              setLoading(false);
@@ -206,9 +237,7 @@
                         }
                     }
 
-                    // --- 呼叫 n8n ---
                     try {
-                        console.log("Sending to n8n with User ID:", userId); // 偵錯用
                         const response = await fetch(N8N_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -253,7 +282,7 @@
                             const tagKey = `${city.id}_tag`; 
                             const indexKey = `${city.id}_heat_index`;
                             formattedData[dateKey][city.id] = {
-                                tag: row[tagKey] || "⚠️ 無數據",
+                                tag: row[tagKey] || null, // 若後端回傳 null，這裡也會是 null
                                 index: row[indexKey] !== undefined ? row[indexKey] : null
                             };
                         });
@@ -296,7 +325,6 @@
 
             const currentInsight = insights[selectedCity.id] || DEFAULT_INSIGHTS[selectedCity.id];
 
-            // --- 如果被阻擋，直接顯示 GatekeeperModal ---
             if (showGatekeeper) {
                 return <GatekeeperModal />;
             }
@@ -363,28 +391,59 @@
                                         const diffTime = cellDate - today;
                                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                         
-                                        const isLocked = diffDays > 30;
-
+                                        const isFuture = diffDays > 30;
                                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                         const dayData = data[dateStr]?.[selectedCity.id];
-                                        const tag = dayData?.tag || "⚠️ 無數據";
-                                        const baseStyle = getTagStyle(tag);
                                         
-                                        // 鎖定時樣式：金色質感
-                                        const cellStyle = isLocked ? "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-200" : baseStyle;
+                                        // --- 關鍵邏輯：若為未來且沒有數據 (或數據為空)，則判定為「未付費鎖定」 ---
+                                        const isLocked = isFuture && (!dayData || !dayData.tag || dayData.tag === '🔒');
+
+                                        // --- 顯示資料準備 ---
+                                        let displayTag = "";
+                                        let displayIndex = null;
+                                        let cellStyle = "";
+
+                                        if (isLocked) {
+                                            // [前端視覺詐欺] 
+                                            // 如果被鎖定，且沒有真實數據，我們就在這裡"假造"一個數據來顯示
+                                            // 讓用戶看到模糊的內容，以為是真的
+                                            const fakeIndex = getFakeDataIndex(year, month, day);
+                                            const fakeTag = FAKE_TAGS[fakeIndex];
+                                            
+                                            displayTag = fakeTag; // 假燈號
+                                            displayIndex = 20 + (fakeIndex * 15); // 假數值
+                                            cellStyle = "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-200"; // 金色鎖定樣式
+                                        } else {
+                                            // 正常顯示 (付費會員或30天內)
+                                            const tag = dayData?.tag || "⚠️ 無數據";
+                                            displayTag = tag;
+                                            displayIndex = dayData?.index;
+                                            cellStyle = getTagStyle(tag);
+                                        }
                                         
                                         return (
-                                            <div key={day} className={`h-[72px] flex flex-col justify-between p-1.5 rounded-lg border transition-all relative overflow-hidden ${cellStyle} ${isLocked ? 'cursor-not-allowed select-none' : 'hover:scale-105 shadow-sm'} ${!dayData && !isLocked ? 'opacity-50' : ''}`}>
+                                            <div 
+                                                key={day} 
+                                                className={`
+                                                    h-[72px] flex flex-col justify-between p-1.5 rounded-lg border transition-all relative overflow-hidden
+                                                    ${cellStyle}
+                                                    ${isLocked ? 'cursor-not-allowed select-none' : 'hover:scale-105 shadow-sm'}
+                                                    ${!dayData && !isLocked ? 'opacity-50' : ''} 
+                                                `}
+                                            >
                                                 {isLocked && (
                                                     <div className="absolute inset-0 z-20 backdrop-blur-[6px] bg-white/40 flex items-center justify-center">
                                                         <Lock size={16} className="text-gray-600 opacity-80" />
                                                     </div>
                                                 )}
-                                                <span className={`text-sm font-semibold relative z-10 ${!dayData ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
-                                                {dayData ? (
+                                                <span className={`text-sm font-semibold relative z-10 ${!dayData && !isLocked ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
+                                                
+                                                {(dayData || isLocked) ? (
                                                     <div className={`flex flex-col items-center justify-center h-full pb-4 gap-1 relative z-10 ${isLocked ? 'blur-[4px] opacity-70' : ''}`}>
-                                                        <span className="text-lg md:text-xl font-bold leading-tight text-center break-words w-full">{tag.substring(0, 2)}</span>
-                                                        {dayData.index !== null && <span className="text-xs opacity-70 font-mono font-bold">{dayData.index}</span>}
+                                                        <span className="text-lg md:text-xl font-bold leading-tight text-center break-words w-full">
+                                                            {displayTag.substring(0, 2)}
+                                                        </span>
+                                                        {displayIndex !== null && <span className="text-xs opacity-70 font-mono font-bold">{displayIndex}</span>}
                                                     </div>
                                                 ) : (
                                                     <div className="h-full flex items-center justify-center relative z-10"><span className="text-xs text-gray-300">-</span></div>
