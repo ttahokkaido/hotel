@@ -95,7 +95,6 @@
         };
 
         // --- 模擬後端回傳的資料 (安全模式) ---
-        // 注意：第 31 天後的資料在後端就已經被清空 (模擬沒有付費的狀況)
         const generateFallbackData = () => {
             const fallbackData = [];
             const today = new Date();
@@ -112,21 +111,16 @@
                 const isFutureLocked = diffDays > 30;
 
                 if (isFutureLocked) {
-                    // 模擬後端：如果是未來鎖定日期，只回傳空資料
                     fallbackData.push({
                         check_in: dateStr,
-                        // 沒有真實數據，確保安全
                         Tokyo_tag: null, 
                         Tokyo_heat_index: null,
-                        // ... 其他城市省略
                     });
                 } else {
-                    // 30天內回傳真實數據
                     fallbackData.push({
                         check_in: dateStr,
                         Tokyo_tag: i % 7 === 0 ? "🔴過熱" : (i % 3 === 0 ? "🟢便宜" : "🟡正常"),
                         Tokyo_heat_index: 50 + (i % 20),
-                        // ... 其他城市簡化
                     });
                 }
             }
@@ -139,19 +133,16 @@
             };
         };
 
-        // 樣式庫：包含所有可能的顏色組合 (用於前端視覺詐欺)
         const ALL_TAG_STYLES = [
-            "bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-100",   // 低點
-            "bg-green-50 text-green-700 border-green-200 ring-1 ring-green-100", // 便宜
-            "bg-yellow-50 text-yellow-700 border-yellow-200 ring-1 ring-yellow-100", // 正常
-            "bg-orange-50 text-orange-700 border-orange-200 ring-1 ring-orange-100", // 小貴
-            "bg-red-50 text-red-700 border-red-200 ring-1 ring-red-100"       // 過熱
+            "bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-100",
+            "bg-green-50 text-green-700 border-green-200 ring-1 ring-green-100",
+            "bg-yellow-50 text-yellow-700 border-yellow-200 ring-1 ring-yellow-100",
+            "bg-orange-50 text-orange-700 border-orange-200 ring-1 ring-orange-100",
+            "bg-red-50 text-red-700 border-red-200 ring-1 ring-red-100"
         ];
         
-        // 假燈號文字
         const FAKE_TAGS = ["🔵低點", "🟢便宜", "🟡正常", "🟠小貴", "🔴過熱"];
 
-        // 產生一個固定的假數據索引 (基於日期)
         const getFakeDataIndex = (year, month, day) => {
             const seed = year * 10000 + month * 100 + day;
             return seed % ALL_TAG_STYLES.length;
@@ -167,7 +158,6 @@
             return "bg-gray-50 text-gray-400 border-gray-100";
         };
 
-        // --- 全螢幕阻擋 Modal (非 LINE 環境使用) ---
         const GatekeeperModal = () => (
             <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
                 <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
@@ -198,7 +188,6 @@
             const [isUsingFallback, setIsUsingFallback] = useState(false);
             const [selectedCity, setSelectedCity] = useState(CITIES[0]);
             const [currentDate, setCurrentDate] = useState(new Date());
-            const [hasLockedDays, setHasLockedDays] = useState(false);
             const [showGatekeeper, setShowGatekeeper] = useState(false); 
 
             useEffect(() => {
@@ -282,7 +271,7 @@
                             const tagKey = `${city.id}_tag`; 
                             const indexKey = `${city.id}_heat_index`;
                             formattedData[dateKey][city.id] = {
-                                tag: row[tagKey] || null, // 若後端回傳 null，這裡也會是 null
+                                tag: row[tagKey] || "⚠️ 無數據",
                                 index: row[indexKey] !== undefined ? row[indexKey] : null
                             };
                         });
@@ -303,14 +292,30 @@
 
             const { days, firstDay, year, month } = getDaysInMonth(currentDate);
 
-            useEffect(() => {
+            // 計算是否顯示 CTA: 只有當目前月份有 "鎖定範圍內 (31~150天) 且 被鎖住 (無資料/鎖頭)" 的格子時才顯示
+            const showSubscriptionCTA = useMemo(() => {
                 const today = new Date();
                 today.setHours(0,0,0,0);
-                const lastDateOfMonth = new Date(year, month, days);
-                const diffTimeEnd = lastDateOfMonth - today;
-                const diffDaysEnd = Math.ceil(diffTimeEnd / (1000 * 60 * 60 * 24));
-                setHasLockedDays(diffDaysEnd > 30);
-            }, [year, month, days]);
+                let ctaNeeded = false;
+
+                for (let i = 1; i <= days; i++) {
+                    const cellDate = new Date(year, month, i);
+                    const diffTime = cellDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // 鎖定範圍是 >30 且 <= 150
+                    if (diffDays > 30 && diffDays <= 150) {
+                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                        const dayData = data[dateStr]?.[selectedCity.id];
+                        // 如果沒有資料，或者是明確的鎖頭標記 -> 代表此為未付費狀態
+                        if (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據') {
+                            ctaNeeded = true;
+                            break;
+                        }
+                    }
+                }
+                return ctaNeeded;
+            }, [year, month, days, data, selectedCity]);
 
             const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
             const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
@@ -391,12 +396,13 @@
                                         const diffTime = cellDate - today;
                                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                         
-                                        const isFuture = diffDays > 30;
+                                        // 鎖定範圍判斷: 31 ~ 150 天
+                                        const isLockRange = diffDays > 30 && diffDays <= 150;
                                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                         const dayData = data[dateStr]?.[selectedCity.id];
                                         
-                                        // --- 關鍵邏輯：若為未來且沒有數據 (或數據為空)，則判定為「未付費鎖定」 ---
-                                        const isLocked = isFuture && (!dayData || !dayData.tag || dayData.tag === '🔒');
+                                        // 真正的鎖定判定：在鎖定範圍內，且沒有資料 (或被後端清空)
+                                        const isLocked = isLockRange && (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據');
 
                                         // --- 顯示資料準備 ---
                                         let displayTag = "";
@@ -405,16 +411,14 @@
 
                                         if (isLocked) {
                                             // [前端視覺詐欺] 
-                                            // 如果被鎖定，且沒有真實數據，我們就在這裡"假造"一個數據來顯示
-                                            // 讓用戶看到模糊的內容，以為是真的
                                             const fakeIndex = getFakeDataIndex(year, month, day);
                                             const fakeTag = FAKE_TAGS[fakeIndex];
                                             
-                                            displayTag = fakeTag; // 假燈號
-                                            displayIndex = 20 + (fakeIndex * 15); // 假數值
-                                            cellStyle = "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-200"; // 金色鎖定樣式
+                                            displayTag = fakeTag; 
+                                            displayIndex = 20 + (fakeIndex * 15);
+                                            cellStyle = "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-200"; 
                                         } else {
-                                            // 正常顯示 (付費會員或30天內)
+                                            // 正常顯示 (付費會員、30天內、或 150天後無資料狀態)
                                             const tag = dayData?.tag || "⚠️ 無數據";
                                             displayTag = tag;
                                             displayIndex = dayData?.index;
@@ -428,7 +432,7 @@
                                                     h-[72px] flex flex-col justify-between p-1.5 rounded-lg border transition-all relative overflow-hidden
                                                     ${cellStyle}
                                                     ${isLocked ? 'cursor-not-allowed select-none' : 'hover:scale-105 shadow-sm'}
-                                                    ${!dayData && !isLocked ? 'opacity-50' : ''} 
+                                                    ${(!dayData && !isLocked) || (dayData?.tag === '⚠️ 無數據') ? 'opacity-50' : ''} 
                                                 `}
                                             >
                                                 {isLocked && (
@@ -436,9 +440,9 @@
                                                         <Lock size={16} className="text-gray-600 opacity-80" />
                                                     </div>
                                                 )}
-                                                <span className={`text-sm font-semibold relative z-10 ${!dayData && !isLocked ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
+                                                <span className={`text-sm font-semibold relative z-10 ${(!dayData && !isLocked) || (dayData?.tag === '⚠️ 無數據') ? 'text-gray-400' : 'text-gray-600'}`}>{day}</span>
                                                 
-                                                {(dayData || isLocked) ? (
+                                                {(dayData || isLocked) && (displayTag !== "⚠️ 無數據") ? (
                                                     <div className={`flex flex-col items-center justify-center h-full pb-4 gap-1 relative z-10 ${isLocked ? 'blur-[4px] opacity-70' : ''}`}>
                                                         <span className="text-lg md:text-xl font-bold leading-tight text-center break-words w-full">
                                                             {displayTag.substring(0, 2)}
@@ -455,7 +459,7 @@
                             </React.Fragment>
                         )}
 
-                        {hasLockedDays && (
+                        {showSubscriptionCTA && (
                             <div className="flex justify-center mb-8 mt-4 w-full animate-fade-in-up px-4">
                                 <button className="w-full md:w-auto bg-gradient-to-r from-red-500 to-pink-500 text-white font-bold py-3 px-8 rounded-full shadow-lg flex items-center justify-center gap-3 hover:scale-105 active:scale-95 transition-all border border-white/20">
                                     <Sparkles size={24} className="text-yellow-200 animate-pulse" />
