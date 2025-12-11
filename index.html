@@ -158,7 +158,6 @@
             return "bg-gray-50 text-gray-400 border-gray-100";
         };
 
-        // --- 全螢幕阻擋 Modal (非 LINE 環境使用) ---
         const GatekeeperModal = () => (
             <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
                 <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
@@ -189,8 +188,8 @@
             const [isUsingFallback, setIsUsingFallback] = useState(false);
             const [selectedCity, setSelectedCity] = useState(CITIES[0]);
             const [currentDate, setCurrentDate] = useState(new Date());
-            const [hasLockedDays, setHasLockedDays] = useState(false);
             const [showGatekeeper, setShowGatekeeper] = useState(false); 
+            const [errorMsg, setErrorMsg] = useState(""); // 用來儲存具體錯誤訊息
 
             useEffect(() => {
                 const initializeApp = async () => {
@@ -230,7 +229,7 @@
 
                     try {
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒
+                        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒 timeout
 
                         const response = await fetch(N8N_WEBHOOK_URL, {
                             method: 'POST',
@@ -246,9 +245,11 @@
                         const apiResponse = await response.json();
                         processApiResponse(apiResponse);
                         setIsUsingFallback(false);
+                        setErrorMsg(""); // 清除錯誤
 
                     } catch (error) {
                         console.warn("API Error:", error);
+                        setErrorMsg(error.message); // 設定錯誤訊息以顯示
                         processApiResponse(generateFallbackData());
                         setIsUsingFallback(true);
                     } finally {
@@ -317,7 +318,8 @@
                     const diffTime = cellDate - today;
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     
-                    if (diffDays > 30 && diffDays <= 150) {
+                    // --- 修正：只有在 31~150 天範圍內才判斷 CTA ---
+                    if (diffDays > 30 && diffDays < 150) { // 這裡也改成 < 150 以匹配
                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
                         const dayData = data[dateStr]?.[selectedCity.id];
                         if (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據') {
@@ -394,7 +396,10 @@
                                 {isUsingFallback && (
                                     <div className="mx-2 mb-2 p-2 bg-yellow-50 border border-yellow-100 rounded-lg flex items-center gap-2 text-xs text-yellow-700">
                                         <AlertCircle size={14} />
-                                        <span>連線不穩，目前顯示展示用數據</span>
+                                        <span>
+                                            連線不穩 ({errorMsg || "API Error"})<br/>
+                                            目前顯示展示用數據
+                                        </span>
                                     </div>
                                 )}
 
@@ -408,7 +413,8 @@
                                         const diffTime = cellDate - today;
                                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                         
-                                        const isLockRange = diffDays > 30 && diffDays <= 150;
+                                        // --- 關鍵修正：鎖定範圍判斷 改為 < 150 ---
+                                        const isLockRange = diffDays > 30 && diffDays < 150;
                                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                         const dayData = data[dateStr]?.[selectedCity.id];
                                         
