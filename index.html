@@ -15,7 +15,7 @@
     <!-- 3. 載入 Babel (用於解析 JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 4. 載入 LINE LIFF SDK (關鍵新增) -->
+    <!-- 4. 載入 LINE LIFF SDK -->
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
@@ -45,11 +45,9 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
         
-        // --- ⚠️ 請在此填入您的 LIFF ID ⚠️ ---
-        // 如果還沒有 ID，保持預設值即可，程式會自動以訪客模式運行
-        const LIFF_ID = "YOUR_LIFF_ID_HERE"; 
-
-        // n8n Webhook URL
+        // --- 設定與資料 ---
+        const LIFF_ID = "2008400942-3JbRekRM"; // 正式 LIFF ID
+        const OFFICIAL_LINE_URL = "https://lin.ee/LTFdIJo"; // 官方 LINE 連結
         const N8N_WEBHOOK_URL = "https://ez2.zeabur.app/webhook/73304ca6-28ae-450a-829d-bd66c2a09919";
 
         // --- 內建圖示元件 ---
@@ -76,6 +74,7 @@
         const Loader2 = (props) => <IconBase {...props}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></IconBase>;
         const AlertCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></IconBase>;
         const Lock = (props) => <IconBase {...props}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
+        const UserPlus = (props) => <IconBase {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" x2="20" y1="8" y2="14"/><line x1="23" x2="17" y1="11" y2="11"/></IconBase>;
 
         const CITIES = [
             { id: 'Tokyo', name: '東京', icon: Building2, color: 'text-purple-600' },
@@ -119,7 +118,7 @@
             return {
                 calendar: fallbackData,
                 insights: {
-                    Tokyo: { analysis: "（模擬數據）目前連線異常，顯示備用資料。請確認您的 LIFF ID 設定是否正確，或網路是否正常。", articleUrl: "#", agodaUrl: "#" },
+                    Tokyo: { analysis: "（模擬數據）目前連線異常，顯示備用資料。", articleUrl: "#", agodaUrl: "#" },
                     Sapporo: { analysis: "（模擬數據）目前連線異常，顯示備用資料。", articleUrl: "#", agodaUrl: "#" },
                 }
             };
@@ -135,6 +134,30 @@
             return "bg-gray-50 text-gray-400 border-gray-100";
         };
 
+        // --- 全螢幕阻擋 Modal (非 LINE 環境使用) ---
+        const GatekeeperModal = () => (
+            <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
+                <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
+                    <div className="mb-6 flex justify-center">
+                        <div className="bg-green-100 p-4 rounded-full">
+                            <UserPlus size={48} className="text-green-600" />
+                        </div>
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4">請使用 LINE 開啟</h2>
+                    <p className="text-gray-600 mb-8 leading-relaxed">
+                        本服務為北海道 OPEN桑 官方 LINE 專屬功能。請加入好友並透過選單開啟，以獲得完整體驗。
+                    </p>
+                    <a 
+                        href={OFFICIAL_LINE_URL}
+                        className="block w-full bg-[#06C755] hover:bg-[#05b64d] text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                    >
+                        <span>加入官方 LINE 好友</span>
+                        <ArrowRight size={20} />
+                    </a>
+                </div>
+            </div>
+        );
+
         const JapanHotelCalendar = () => {
             const [data, setData] = useState({});
             const [insights, setInsights] = useState(DEFAULT_INSIGHTS);
@@ -143,59 +166,56 @@
             const [selectedCity, setSelectedCity] = useState(CITIES[0]);
             const [currentDate, setCurrentDate] = useState(new Date());
             const [hasLockedDays, setHasLockedDays] = useState(false);
-            const [liffError, setLiffError] = useState(null);
+            const [showGatekeeper, setShowGatekeeper] = useState(false); // 控制是否顯示阻擋視窗
 
             useEffect(() => {
                 const initializeApp = async () => {
                     setLoading(true);
                     let userId = null;
 
-                    // --- 1. LIFF 初始化邏輯 ---
                     try {
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const mockUserId = urlParams.get('mock_user_id');
-
-                        if (mockUserId) {
-                            console.log("Using Mock User ID:", mockUserId);
-                            userId = mockUserId;
-                        } else if (window.liff) {
-                            // --- FIX: 檢查是否設定了有效的 LIFF ID ---
-                            if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID_HERE") {
-                                console.warn("未設定 LIFF ID，跳過 LIFF 初始化，將以訪客模式執行。");
-                                // 不執行 liff.init，直接往下走，userId 保持為 null
-                            } else {
-                                console.log("Initializing LIFF...");
-                                await liff.init({ liffId: LIFF_ID });
-                                
-                                if (!liff.isLoggedIn()) {
-                                    liff.login();
-                                    return; 
-                                }
-                                
-                                const profile = await liff.getProfile();
-                                userId = profile.userId;
-                                console.log("LIFF User ID:", userId);
+                        if (window.liff) {
+                            await liff.init({ liffId: LIFF_ID });
+                            
+                            // --- 關鍵檢查：是否在 LINE App 內 ---
+                            if (!liff.isInClient()) {
+                                console.warn("Not in LINE client. Showing gatekeeper.");
+                                setShowGatekeeper(true); // 顯示阻擋視窗
+                                setLoading(false);
+                                return; // 中斷後續載入
                             }
+                            
+                            if (!liff.isLoggedIn()) {
+                                liff.login();
+                                return; 
+                            }
+                            
+                            const profile = await liff.getProfile();
+                            userId = profile.userId;
+                            console.log("LIFF User ID:", userId);
                         } else {
                             throw new Error("LIFF SDK not loaded");
                         }
                     } catch (err) {
                         console.error("LIFF Init Error:", err);
-                        setLiffError(err.message);
-                        // 出錯時繼續執行，userId 為 null
+                        // 在非 localhost 環境下失敗，通常視為非 LINE 環境
+                        if (window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')) {
+                             setShowGatekeeper(true);
+                             setLoading(false);
+                             return;
+                        }
                     }
 
-                    // --- 2. 呼叫 n8n (帶入 userId) ---
+                    // --- 呼叫 n8n ---
                     try {
+                        console.log("Sending to n8n with User ID:", userId); // 偵錯用
                         const response = await fetch(N8N_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ userId: userId }), 
                         });
 
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
                         const apiResponse = await response.json();
                         processApiResponse(apiResponse);
@@ -210,7 +230,6 @@
                     }
                 };
 
-                // 資料處理 helper
                 const processApiResponse = (apiResponse) => {
                     let rawCalendarData = [];
                     let fetchedInsights = null;
@@ -276,6 +295,11 @@
             }, [days, firstDay]);
 
             const currentInsight = insights[selectedCity.id] || DEFAULT_INSIGHTS[selectedCity.id];
+
+            // --- 如果被阻擋，直接顯示 GatekeeperModal ---
+            if (showGatekeeper) {
+                return <GatekeeperModal />;
+            }
 
             return (
                 <div className="bg-white flex flex-col font-sans w-full max-w-md mx-auto shadow-none md:shadow-2xl overflow-hidden md:rounded-xl md:border md:border-gray-200 relative h-screen md:h-[850px]">
@@ -397,10 +421,10 @@
                             <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100 shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-purple-200 rounded-full opacity-20 blur-xl"></div>
                                 <div className="flex items-center gap-2 mb-3 relative z-10">
-                                    <div className="bg-white p-1.5 rounded-full shadow-sm border border-indigo-100"><Sparkles className="text-indigo-600" size={16} /></div>
-                                    <h3 className="font-bold text-indigo-900 text-sm md:text-base">OPEN桑 房價分析 & 建議</h3>
+                                    <div className="bg-white p-1.5 rounded-full shadow-sm border border-indigo-100"><Sparkles className="text-indigo-600" size={24} /></div>
+                                    <h3 className="font-bold text-indigo-900 text-lg md:text-xl">OPEN桑 房價分析 & 建議</h3>
                                 </div>
-                                <p className="text-xs md:text-sm text-indigo-800 leading-relaxed mb-4 relative z-10 text-justify whitespace-pre-line">{currentInsight?.analysis || "暫無分析數據"}</p>
+                                <p className="text-base md:text-lg text-indigo-800 leading-relaxed mb-4 relative z-10 text-justify whitespace-pre-line">{currentInsight?.analysis || "暫無分析數據"}</p>
                                 <div className="space-y-2 relative z-10">
                                     <a href={currentInsight?.articleUrl || "#"} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between w-full bg-white p-4 rounded-lg border border-indigo-100 shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-98 transition-all group">
                                         <div className="flex items-center gap-3">
