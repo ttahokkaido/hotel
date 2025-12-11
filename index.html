@@ -158,6 +158,7 @@
             return "bg-gray-50 text-gray-400 border-gray-100";
         };
 
+        // --- 全螢幕阻擋 Modal (非 LINE 環境使用) ---
         const GatekeeperModal = () => (
             <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
                 <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
@@ -188,6 +189,7 @@
             const [isUsingFallback, setIsUsingFallback] = useState(false);
             const [selectedCity, setSelectedCity] = useState(CITIES[0]);
             const [currentDate, setCurrentDate] = useState(new Date());
+            const [hasLockedDays, setHasLockedDays] = useState(false);
             const [showGatekeeper, setShowGatekeeper] = useState(false); 
 
             useEffect(() => {
@@ -227,11 +229,17 @@
                     }
 
                     try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20秒
+
                         const response = await fetch(N8N_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ userId: userId }), 
+                            signal: controller.signal
                         });
+
+                        clearTimeout(timeoutId);
 
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
@@ -240,7 +248,7 @@
                         setIsUsingFallback(false);
 
                     } catch (error) {
-                        console.warn("API Error, using fallback:", error);
+                        console.warn("API Error:", error);
                         processApiResponse(generateFallbackData());
                         setIsUsingFallback(true);
                     } finally {
@@ -254,7 +262,13 @@
 
                     if (apiResponse) {
                         if (Array.isArray(apiResponse)) {
-                            rawCalendarData = apiResponse;
+                            // [修復]: 檢查陣列中是否包含結構化物件
+                            if (apiResponse.length > 0 && apiResponse[0].calendar) {
+                                rawCalendarData = apiResponse[0].calendar;
+                                fetchedInsights = apiResponse[0].insights;
+                            } else {
+                                rawCalendarData = apiResponse;
+                            }
                         } else if (apiResponse.calendar || apiResponse.data) {
                             rawCalendarData = apiResponse.calendar || apiResponse.data || [];
                             fetchedInsights = apiResponse.insights || null;
@@ -292,7 +306,7 @@
 
             const { days, firstDay, year, month } = getDaysInMonth(currentDate);
 
-            // 計算是否顯示 CTA: 只有當目前月份有 "鎖定範圍內 (31~150天) 且 被鎖住 (無資料/鎖頭)" 的格子時才顯示
+            // 計算是否顯示 CTA
             const showSubscriptionCTA = useMemo(() => {
                 const today = new Date();
                 today.setHours(0,0,0,0);
@@ -303,11 +317,9 @@
                     const diffTime = cellDate - today;
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     
-                    // 鎖定範圍是 >30 且 <= 150
                     if (diffDays > 30 && diffDays <= 150) {
                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
                         const dayData = data[dateStr]?.[selectedCity.id];
-                        // 如果沒有資料，或者是明確的鎖頭標記 -> 代表此為未付費狀態
                         if (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據') {
                             ctaNeeded = true;
                             break;
@@ -396,29 +408,23 @@
                                         const diffTime = cellDate - today;
                                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                         
-                                        // 鎖定範圍判斷: 31 ~ 150 天
                                         const isLockRange = diffDays > 30 && diffDays <= 150;
                                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                         const dayData = data[dateStr]?.[selectedCity.id];
                                         
-                                        // 真正的鎖定判定：在鎖定範圍內，且沒有資料 (或被後端清空)
                                         const isLocked = isLockRange && (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據');
 
-                                        // --- 顯示資料準備 ---
                                         let displayTag = "";
                                         let displayIndex = null;
                                         let cellStyle = "";
 
                                         if (isLocked) {
-                                            // [前端視覺詐欺] 
                                             const fakeIndex = getFakeDataIndex(year, month, day);
                                             const fakeTag = FAKE_TAGS[fakeIndex];
-                                            
                                             displayTag = fakeTag; 
                                             displayIndex = 20 + (fakeIndex * 15);
                                             cellStyle = "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-200"; 
                                         } else {
-                                            // 正常顯示 (付費會員、30天內、或 150天後無資料狀態)
                                             const tag = dayData?.tag || "⚠️ 無數據";
                                             displayTag = tag;
                                             displayIndex = dayData?.index;
