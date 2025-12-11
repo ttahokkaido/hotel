@@ -46,7 +46,7 @@
         const { useState, useEffect, useMemo, useCallback, memo } = React;
         
         // ==========================================
-        // 1. Utils & Config (模組化配置)
+        // 1. Utils & Config
         // ==========================================
         
         const CONFIG = {
@@ -55,7 +55,6 @@
             N8N_WEBHOOK_URL: "https://ez2.zeabur.app/webhook/73304ca6-28ae-450a-829d-bd66c2a09919"
         };
 
-        // 日期處理工具：修正時區問題，使用本地時間
         const DateUtils = {
             formatLocalYYYYMMDD: (date) => {
                 const year = date.getFullYear();
@@ -80,7 +79,6 @@
             }
         };
 
-        // 樣式對照表
         const STYLES = {
             TAG: {
                 "🔵低點": "bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-100",
@@ -95,33 +93,28 @@
 
         const getTagStyle = (tag) => {
             if (!tag) return STYLES.TAG.DEFAULT;
-            // 修正：直接檢查是否包含整個 key，避免只比對第一個字造成的錯誤
             const found = Object.keys(STYLES.TAG).find(k => tag.includes(k));
             return found ? STYLES.TAG[found] : STYLES.TAG.DEFAULT;
         };
 
-        // 假資料邏輯 (用於視覺詐欺)
         const FAKE_TAGS = ["🔵低點", "🟢便宜", "🟡正常", "🟠小貴", "🔴過熱"];
         const ALL_TAG_STYLES = Object.values(STYLES.TAG).filter(s => !s.includes('gray'));
 
         const getFakeDataIndex = (year, month, day) => {
-            // 修正：month + 1 確保月份為 1-based，避免 0 月造成的混淆
             const seed = year * 10000 + (month + 1) * 100 + day;
             return seed % ALL_TAG_STYLES.length;
         };
 
         // ==========================================
-        // 2. UI Components (原子化元件 & 效能優化)
+        // 2. UI Components
         // ==========================================
 
-        // Base Icon - 使用 memo 避免重複渲染
         const IconBase = memo(({ children, ...props }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
                 {children}
             </svg>
         ));
 
-        // Icons
         const ChevronLeft = memo((props) => <IconBase {...props}><path d="m15 18-6-6 6-6"/></IconBase>);
         const ChevronRight = memo((props) => <IconBase {...props}><path d="m9 18 6-6-6-6"/></IconBase>);
         const MapPin = memo((props) => <IconBase {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>);
@@ -141,7 +134,6 @@
         const Lock = memo((props) => <IconBase {...props}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>);
         const UserPlus = memo((props) => <IconBase {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" x2="20" y1="8" y2="14"/><line x1="23" x2="17" y1="11" y2="11"/></IconBase>);
 
-        // 城市設定 (Static Data)
         const CITIES = [
             { id: 'Tokyo', name: '東京', icon: Building2, color: 'text-purple-600' },
             { id: 'Sapporo', name: '札幌', icon: Snowflake, color: 'text-blue-500' },
@@ -151,7 +143,6 @@
             { id: 'Okinawa', name: '沖繩', icon: Palmtree, color: 'text-green-600' }
         ];
 
-        // 預設分析資料
         const DEFAULT_INSIGHTS = {
             Tokyo: { analysis: "AI 分析數據載入中...", articleUrl: "#", agodaUrl: "#" },
             Sapporo: { analysis: "AI 分析數據載入中...", articleUrl: "#", agodaUrl: "#" },
@@ -161,7 +152,6 @@
             Okinawa: { analysis: "AI 分析數據載入中...", articleUrl: "#", agodaUrl: "#" }
         };
 
-        // --- 獨立元件: Gatekeeper Modal ---
         const GatekeeperModal = memo(() => (
             <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
                 <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
@@ -182,7 +172,6 @@
             </div>
         ));
 
-        // --- 獨立元件: Header (城市選擇器) ---
         const Header = memo(({ selectedCity, onSelectCity }) => (
             <div className="px-4 pt-4 pb-2 bg-white flex-none">
                 <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-4">
@@ -204,7 +193,6 @@
             </div>
         ));
 
-        // --- 獨立元件: Navigator (月份切換) ---
         const Navigator = memo(({ currentDate, onPrevMonth, onNextMonth }) => {
             const formatMonthTitle = (date) => `${date.getFullYear()}年 ${date.getMonth() + 1}月`;
             return (
@@ -216,7 +204,6 @@
             );
         });
 
-        // --- 獨立元件: Weekday Headers ---
         const WeekdayHeaders = memo(() => (
             <div className="bg-white grid grid-cols-7 border-b border-gray-100 pb-2 pt-1 flex-none">
                 {['日', '一', '二', '三', '四', '五', '六'].map((d, i) => (
@@ -225,7 +212,6 @@
             </div>
         ));
 
-        // --- 獨立元件: CalendarGrid (核心邏輯) ---
         const CalendarGrid = memo(({ days, firstDay, year, month, data, selectedCityId }) => {
             const calendarCells = useMemo(() => {
                 const cells = [];
@@ -240,12 +226,12 @@
                         if (!day) return <div key={`empty-${idx}`} className="h-[72px]"></div>;
 
                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        // 使用 DateUtils 計算天數差 (修復時區與跨日問題)
                         const diffDays = DateUtils.getDiffDaysFromToday(new Date(year, month, day));
                         
-                        // 鎖定範圍: >30天 且 <150天
                         const isLockRange = diffDays > 30 && diffDays < 150;
                         const dayData = data[dateStr]?.[selectedCityId];
+                        
+                        // 鎖定判定：在鎖定範圍內，且無資料 (或後端清洗)
                         const isLocked = isLockRange && (!dayData || !dayData.tag || dayData.tag === '🔒' || dayData.tag === '⚠️ 無數據');
 
                         let displayTag = "", displayIndex = null, cellStyle = "";
@@ -286,8 +272,8 @@
             );
         });
 
-        // --- 獨立元件: Analysis Section ---
-        const AnalysisSection = memo(({ insight, hasLockedDays, selectedCityName }) => (
+        // 修正：AnalysisSection 接收 isLocked 參數
+        const AnalysisSection = memo(({ insight, isLocked, selectedCityName }) => (
             <div className="px-1">
                 <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-purple-200 rounded-full opacity-20 blur-xl"></div>
@@ -296,10 +282,10 @@
                         <h3 className="font-bold text-indigo-900 text-lg md:text-xl">OPEN桑 房價分析 & 建議</h3>
                     </div>
                     <div className="relative z-10 mb-4">
-                        <p className={`text-base md:text-lg text-indigo-800 leading-relaxed text-justify whitespace-pre-line ${hasLockedDays ? 'pb-2' : ''}`}>
+                        <p className={`text-base md:text-lg text-indigo-800 leading-relaxed text-justify whitespace-pre-line ${isLocked ? 'pb-2' : ''}`}>
                             {insight?.analysis || "暫無分析數據"}
                         </p>
-                        {hasLockedDays && (
+                        {isLocked && (
                             <div className="absolute inset-x-0 bottom-0 h-[75%] backdrop-blur-[6px] bg-gradient-to-b from-transparent to-indigo-50/80 flex items-end justify-center pb-2">
                                 <span className="text-indigo-900/60 font-bold text-sm bg-white/50 px-3 py-1 rounded-full shadow-sm backdrop-blur-md">🔒 訂閱解鎖完整分析</span>
                             </div>
@@ -340,13 +326,12 @@
             const generateFallbackData = useCallback(() => {
                 const fallbackData = [];
                 const today = new Date();
-                // 產生 150 天數據
                 for(let i=0; i<150; i++) { 
-                    const d = new Date(today); // 從今天開始算，避免產生舊資料
+                    const d = new Date(today);
                     d.setDate(today.getDate() + i);
-                    const dateStr = DateUtils.formatLocalYYYYMMDD(d); // 使用修正後的日期格式器
+                    const dateStr = DateUtils.formatLocalYYYYMMDD(d);
                     
-                    const diffDays = i; // 直接用 i 就是差距天數
+                    const diffDays = i;
                     const isFutureLocked = diffDays > 30;
 
                     if (isFutureLocked) {
@@ -367,6 +352,28 @@
                     }
                 };
             }, []);
+
+            // 全域判斷是否為免費仔
+            const isFreeUser = useMemo(() => {
+                if (Object.keys(data).length === 0) return false; // 載入中不鎖定
+                
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                
+                // 檢查第 35 天的數據 (確保 > 30 天)
+                const checkDate = new Date(today);
+                checkDate.setDate(today.getDate() + 35);
+                const dateStr = DateUtils.formatLocalYYYYMMDD(checkDate);
+                
+                const cityData = data[dateStr]?.['Tokyo']; // 檢查東京數據是否存在
+                
+                // 有有效數據 -> 付費會員 (false)
+                if (cityData && cityData.tag && cityData.tag !== '🔒' && cityData.tag !== '⚠️ 無數據') {
+                    return false;
+                }
+                // 無數據或鎖定 -> 免費會員 (true)
+                return true; 
+            }, [data]);
 
             // 初始化與資料獲取
             useEffect(() => {
@@ -389,7 +396,6 @@
                         } else { throw new Error("LIFF SDK missing"); }
                     } catch (err) {
                         console.error("LIFF Init Error:", err);
-                        // 本地測試豁免
                         if (window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1')) {
                              setShowGatekeeper(true);
                              setLoading(false);
@@ -545,9 +551,10 @@
                             </div>
                         </div>
 
+                        {/* 修改: 使用 isLocked={isFreeUser} 傳入全域免費判斷 */}
                         <AnalysisSection 
                             insight={currentInsight} 
-                            hasLockedDays={showSubscriptionCTA} 
+                            isLocked={isFreeUser} 
                             selectedCityName={selectedCity.name} 
                         />
                     </div>
